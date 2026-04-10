@@ -6,8 +6,8 @@ import sys
 
 from haac.config import load_config
 from haac.client import HAClient
-from haac.models import PlanResult
-from haac.output import print_plan, print_apply_change, print_delete, print_pull_add, console
+from haac.models import PlanResult, HaacConfigError
+from haac.output import print_plan, print_apply_change, print_delete, print_pull_add, print_warnings, console
 
 # Import providers to trigger registration
 import haac.providers.floors  # noqa: F401
@@ -20,7 +20,7 @@ import haac.providers.scenes  # noqa: F401
 import haac.providers.helpers  # noqa: F401
 import haac.providers.dashboard  # noqa: F401
 
-from haac.providers import get_providers, get_provider
+from haac.providers import get_providers, get_provider, validate_references
 
 
 async def _build_context(providers, client, config):
@@ -40,6 +40,13 @@ async def _run_plan(config):
         providers = get_providers()
         context = await _build_context(providers, client, config)
 
+        desired_state = {
+            p.name: context[f"desired_{p.name}"]
+            for p in providers
+            if f"desired_{p.name}" in context
+        }
+        plan.warnings = validate_references(desired_state)
+
         for provider in providers:
             if not provider.has_state_file(config.state_dir):
                 continue
@@ -56,6 +63,14 @@ async def _run_apply(config):
     async with HAClient(config.ha_url, config.ha_token) as client:
         providers = get_providers()
         context = await _build_context(providers, client, config)
+
+        desired_state = {
+            p.name: context[f"desired_{p.name}"]
+            for p in providers
+            if f"desired_{p.name}" in context
+        }
+        warnings = validate_references(desired_state)
+        print_warnings(warnings)
 
         any_changes = False
         for provider in providers:
@@ -144,15 +159,19 @@ def main():
         console.print("[red]Error:[/red] HA_TOKEN not set. Run [cyan]haac init[/cyan] or create .env with HA_TOKEN.")
         sys.exit(1)
 
-    if args.command == "plan":
-        plan = asyncio.run(_run_plan(config))
-        sys.exit(2 if plan.has_changes else 0)
-    elif args.command == "apply":
-        asyncio.run(_run_apply(config))
-    elif args.command == "pull":
-        asyncio.run(_run_pull(config))
-    elif args.command == "delete":
-        asyncio.run(_run_delete(config, args.targets))
+    try:
+        if args.command == "plan":
+            plan = asyncio.run(_run_plan(config))
+            sys.exit(2 if plan.has_changes else 0)
+        elif args.command == "apply":
+            asyncio.run(_run_apply(config))
+        elif args.command == "pull":
+            asyncio.run(_run_pull(config))
+        elif args.command == "delete":
+            asyncio.run(_run_delete(config, args.targets))
+    except HaacConfigError as e:
+        console.print(f"[red]Config error:[/red] {e}")
+        sys.exit(1)
 
 
 if __name__ == "__main__":
