@@ -151,6 +151,7 @@ def main():
     parser = argparse.ArgumentParser(prog="haac", description="Home Assistant as Code")
     subparsers = parser.add_subparsers(dest="command", required=True)
 
+    subparsers.add_parser("init", help="Initialize a new haac project")
     subparsers.add_parser("plan", help="Show what would change in HA")
     subparsers.add_parser("apply", help="Apply changes to HA")
     subparsers.add_parser("pull", help="Pull HA state into local files (additive)")
@@ -159,13 +160,19 @@ def main():
     delete_parser.add_argument("targets", nargs="+", metavar="kind:id")
 
     args = parser.parse_args()
+
+    if args.command == "init":
+        from haac.init import run_init
+        run_init()
+        return
+
     config = load_config()
 
     if not config.ha_url:
-        console.print("[red]Error:[/red] ha_url not set. Create haac.yaml with ha_url or set HA_URL env var.")
+        console.print("[red]Error:[/red] ha_url not set. Run [cyan]haac init[/cyan] or create haac.yaml.")
         sys.exit(1)
     if not config.ha_token:
-        console.print("[red]Error:[/red] HA_TOKEN not set in .env")
+        console.print("[red]Error:[/red] HA_TOKEN not set. Run [cyan]haac init[/cyan] or create .env with HA_TOKEN.")
         sys.exit(1)
 
     if args.command == "plan":
