@@ -65,3 +65,64 @@ class TestParseStateFile:
         path = tmp_state("floors.yaml", "floors: []\n")
         result = parse_state_file(path, "floors", ["name"])
         assert result == []
+
+
+from haac.models import ValidationWarning
+from haac.providers import validate_references
+
+
+class TestValidateReferences:
+    def test_no_warnings_when_valid(self):
+        desired = {
+            "floors": [{"id": "ground", "name": "Ground"}],
+            "areas": [{"id": "kitchen_id", "name": "Kitchen", "floor": "ground"}],
+            "devices": [{"match": "hue_*", "area": "kitchen_id"}],
+        }
+        warnings = validate_references(desired)
+        assert warnings == []
+
+    def test_area_references_missing_floor(self):
+        desired = {
+            "floors": [{"id": "ground", "name": "Ground"}],
+            "areas": [{"name": "Kitchen", "floor": "nonexistent"}],
+        }
+        warnings = validate_references(desired)
+        assert len(warnings) == 1
+        assert "Kitchen" in warnings[0].message
+        assert "nonexistent" in warnings[0].message
+        assert warnings[0].file == "areas.yaml"
+
+    def test_area_without_floor_ref_no_warning(self):
+        desired = {
+            "floors": [{"id": "ground", "name": "Ground"}],
+            "areas": [{"name": "Kitchen"}],
+        }
+        warnings = validate_references(desired)
+        assert warnings == []
+
+    def test_device_references_missing_area(self):
+        desired = {
+            "areas": [{"id": "kitchen", "name": "Kitchen"}],
+            "devices": [{"match": "hue_*", "area": "bedroom"}],
+        }
+        warnings = validate_references(desired)
+        assert len(warnings) == 1
+        assert "hue_*" in warnings[0].message
+        assert "bedroom" in warnings[0].message
+        assert warnings[0].file == "assignments.yaml"
+
+    def test_multiple_warnings(self):
+        desired = {
+            "floors": [],
+            "areas": [
+                {"name": "Kitchen", "floor": "missing_floor"},
+                {"name": "Bedroom", "floor": "also_missing"},
+            ],
+            "devices": [{"match": "*", "area": "missing_area"}],
+        }
+        warnings = validate_references(desired)
+        assert len(warnings) == 3
+
+    def test_empty_desired_state(self):
+        warnings = validate_references({})
+        assert warnings == []

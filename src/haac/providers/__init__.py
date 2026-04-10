@@ -6,7 +6,7 @@ from pathlib import Path
 import yaml
 
 from haac.client import HAClient
-from haac.models import Change, HaacConfigError, ProviderResult
+from haac.models import Change, HaacConfigError, ProviderResult, ValidationWarning
 
 
 def parse_state_file(path: Path, root_key: str, required_fields: list[str]) -> list[dict]:
@@ -37,6 +37,36 @@ def parse_state_file(path: Path, root_key: str, required_fields: list[str]) -> l
                 raise HaacConfigError(path.name, f"entry #{i} has empty required field '{field}'")
 
     return entries
+
+
+def validate_references(desired_state: dict[str, list[dict]]) -> list[ValidationWarning]:
+    """Check cross-provider references and return warnings for broken links."""
+    warnings = []
+
+    floors = desired_state.get("floors", [])
+    floor_ids = {f["id"] for f in floors if "id" in f}
+
+    areas = desired_state.get("areas", [])
+    area_ids = {a["id"] for a in areas if "id" in a}
+
+    for area in areas:
+        floor_ref = area.get("floor")
+        if floor_ref and floor_ref not in floor_ids:
+            warnings.append(ValidationWarning(
+                file="areas.yaml",
+                message=f'"{area["name"]}" references floor "{floor_ref}" but no floor with id "{floor_ref}" exists in floors.yaml',
+            ))
+
+    devices = desired_state.get("devices", [])
+    for rule in devices:
+        area_ref = rule.get("area")
+        if area_ref and area_ref not in area_ids:
+            warnings.append(ValidationWarning(
+                file="assignments.yaml",
+                message=f'device rule "{rule["match"]}" references area "{area_ref}" but no area with id "{area_ref}" exists in areas.yaml',
+            ))
+
+    return warnings
 
 
 class Provider(ABC):
