@@ -1,8 +1,19 @@
+import asyncio
+
 import pytest
 from pathlib import Path
 
-from haac.models import HaacConfigError
-from haac.providers import parse_state_file
+from haac.models import HaacConfigError, ValidationWarning
+from haac.providers import parse_state_file, validate_references
+from haac.providers.floors import FloorsProvider
+from haac.providers.labels import LabelsProvider
+from haac.providers.areas import AreasProvider
+from haac.providers.devices import DevicesProvider
+from haac.providers.entities import EntitiesProvider
+from haac.providers.automations import AutomationsProvider
+from haac.providers.scenes import ScenesProvider
+from haac.providers.helpers import HelpersProvider
+from haac.providers.dashboard import DashboardProvider
 
 
 @pytest.fixture
@@ -67,9 +78,6 @@ class TestParseStateFile:
         assert result == []
 
 
-from haac.models import ValidationWarning
-from haac.providers import validate_references
-
 
 class TestValidateReferences:
     def test_no_warnings_when_valid(self):
@@ -127,18 +135,6 @@ class TestValidateReferences:
         warnings = validate_references({})
         assert warnings == []
 
-
-import asyncio
-
-from haac.providers.floors import FloorsProvider
-from haac.providers.labels import LabelsProvider
-from haac.providers.areas import AreasProvider
-from haac.providers.devices import DevicesProvider
-from haac.providers.entities import EntitiesProvider
-from haac.providers.automations import AutomationsProvider
-from haac.providers.scenes import ScenesProvider
-from haac.providers.helpers import HelpersProvider
-from haac.providers.dashboard import DashboardProvider
 
 
 class TestProviderReadDesiredValidation:

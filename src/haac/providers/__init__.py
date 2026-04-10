@@ -54,7 +54,7 @@ def validate_references(desired_state: dict[str, list[dict]]) -> list[Validation
         if floor_ref and floor_ref not in floor_ids:
             warnings.append(ValidationWarning(
                 file="areas.yaml",
-                message=f'"{area["name"]}" references floor "{floor_ref}" but no floor with id "{floor_ref}" exists in floors.yaml',
+                message=f'"{area.get("name", "(unknown)")}" references floor "{floor_ref}" but no floor with id "{floor_ref}" exists in floors.yaml',
             ))
 
     devices = desired_state.get("devices", [])
@@ -63,7 +63,7 @@ def validate_references(desired_state: dict[str, list[dict]]) -> list[Validation
         if area_ref and area_ref not in area_ids:
             warnings.append(ValidationWarning(
                 file="assignments.yaml",
-                message=f'device rule "{rule["match"]}" references area "{area_ref}" but no area with id "{area_ref}" exists in areas.yaml',
+                message=f'device rule "{rule.get("match", "(unknown)")}" references area "{area_ref}" but no area with id "{area_ref}" exists in areas.yaml',
             ))
 
     return warnings
