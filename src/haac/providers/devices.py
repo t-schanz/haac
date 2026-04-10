@@ -5,7 +5,7 @@ from pathlib import Path
 import yaml
 
 from haac.client import HAClient
-from haac.models import Change, ProviderResult
+from haac.models import Change, ProviderResult, Unmanaged
 from haac.providers import Provider, register
 
 
@@ -60,7 +60,18 @@ class DevicesProvider(Provider):
                     matched_area_our_id = rule["area"]
 
             if matched_area_our_id is None:
-                # No rule matched this device — skip (not managed)
+                # No rule matched — report as unmanaged if it has an area
+                if current_area_id:
+                    # Reverse-lookup area name for display
+                    area_name = next(
+                        (a["name"] for a in ha_areas if a["area_id"] == current_area_id),
+                        current_area_id,
+                    )
+                    result.unmanaged.append(Unmanaged(
+                        resource_type="device",
+                        ha_id=device["id"],
+                        name=f"{device_name} → {area_name}",
+                    ))
                 continue
 
             target_area_id = self._resolve_area_id(matched_area_our_id, desired_areas, ha_areas)
@@ -87,6 +98,10 @@ class DevicesProvider(Provider):
 
     async def delete(self, client: HAClient, ha_id: str) -> None:
         raise NotImplementedError("Devices cannot be deleted via haac")
+
+    async def write_desired(self, state_dir: Path, resources: list[dict]) -> None:
+        """No-op — device assignments use glob patterns, not raw entries."""
+        pass
 
 
 register(DevicesProvider())
