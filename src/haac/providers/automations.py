@@ -1,11 +1,10 @@
 """Automations provider — CRUD via REST API."""
 
 from pathlib import Path
-import yaml
 
 from haac.client import HAClient
 from haac.models import Change, ProviderResult, Unmanaged
-from haac.providers import Provider, register
+from haac.providers import Provider, parse_state_file, register
 
 
 class AutomationsProvider(Provider):
@@ -17,8 +16,7 @@ class AutomationsProvider(Provider):
         path = state_dir / self.state_file
         if not path.exists():
             return []
-        data = yaml.safe_load(path.read_text()) or {}
-        return data.get("automations", [])
+        return parse_state_file(path, "automations", ["id"])
 
     async def read_current(self, client: HAClient) -> list[dict]:
         # Get automation entity states (which contain the 'id' attribute)

@@ -4,7 +4,7 @@ from pathlib import Path
 import yaml
 
 from haac.client import HAClient
-from haac.models import Change, ProviderResult
+from haac.models import Change, HaacConfigError, ProviderResult
 from haac.providers import Provider, register
 
 
@@ -17,8 +17,15 @@ class DashboardProvider(Provider):
         path = state_dir / self.state_file
         if not path.exists():
             return []
-        data = yaml.safe_load(path.read_text()) or {}
-        return [data]  # wrap in list for consistency
+        try:
+            data = yaml.safe_load(path.read_text())
+        except yaml.YAMLError as e:
+            raise HaacConfigError(path.name, f"YAML parse error: {e}")
+        if not isinstance(data, dict):
+            raise HaacConfigError(path.name, "expected a YAML mapping at the top level")
+        if "views" in data and not isinstance(data["views"], list):
+            raise HaacConfigError(path.name, "expected 'views' to be a list")
+        return [data]
 
     async def read_current(self, client: HAClient) -> list[dict]:
         try:

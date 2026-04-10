@@ -5,7 +5,7 @@ import yaml
 
 from haac.client import HAClient
 from haac.models import Change, ProviderResult, Unmanaged
-from haac.providers import Provider, register
+from haac.providers import Provider, parse_state_file, register
 
 
 class EntitiesProvider(Provider):
@@ -17,8 +17,7 @@ class EntitiesProvider(Provider):
         path = state_dir / self.state_file
         if not path.exists():
             return []
-        data = yaml.safe_load(path.read_text()) or {}
-        return data.get("entities", [])
+        return parse_state_file(path, "entities", ["entity_id"])
 
     async def read_current(self, client: HAClient) -> list[dict]:
         return await client.ws_command("config/entity_registry/list")

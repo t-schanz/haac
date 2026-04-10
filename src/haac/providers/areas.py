@@ -1,11 +1,10 @@
 """Areas provider — CRUD via WebSocket. Areas depend on floors."""
 
 from pathlib import Path
-import yaml
 
 from haac.client import HAClient
 from haac.models import Change, ProviderResult, Unmanaged
-from haac.providers import Provider, register
+from haac.providers import Provider, parse_state_file, register
 
 
 class AreasProvider(Provider):
@@ -17,8 +16,7 @@ class AreasProvider(Provider):
         path = state_dir / self.state_file
         if not path.exists():
             return []
-        data = yaml.safe_load(path.read_text()) or {}
-        return data.get("areas", [])
+        return parse_state_file(path, "areas", ["name"])
 
     async def read_current(self, client: HAClient) -> list[dict]:
         return await client.ws_command("config/area_registry/list")

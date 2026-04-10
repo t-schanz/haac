@@ -2,11 +2,10 @@
 
 from fnmatch import fnmatch
 from pathlib import Path
-import yaml
 
 from haac.client import HAClient
 from haac.models import Change, ProviderResult, Unmanaged
-from haac.providers import Provider, register
+from haac.providers import Provider, parse_state_file, register
 
 
 class DevicesProvider(Provider):
@@ -18,8 +17,7 @@ class DevicesProvider(Provider):
         path = state_dir / self.state_file
         if not path.exists():
             return []
-        data = yaml.safe_load(path.read_text()) or {}
-        return data.get("devices", [])
+        return parse_state_file(path, "devices", ["match", "area"])
 
     async def read_current(self, client: HAClient) -> list[dict]:
         return await client.ws_command("config/device_registry/list")

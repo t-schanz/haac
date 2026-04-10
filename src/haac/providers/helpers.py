@@ -1,11 +1,10 @@
 """Helpers provider — input_boolean CRUD via WebSocket API."""
 
 from pathlib import Path
-import yaml
 
 from haac.client import HAClient
 from haac.models import Change, ProviderResult, Unmanaged
-from haac.providers import Provider, register
+from haac.providers import Provider, parse_state_file, register
 
 
 class HelpersProvider(Provider):
@@ -17,8 +16,7 @@ class HelpersProvider(Provider):
         path = state_dir / self.state_file
         if not path.exists():
             return []
-        data = yaml.safe_load(path.read_text()) or {}
-        return data.get("input_booleans", [])
+        return parse_state_file(path, "input_booleans", ["name"])
 
     async def read_current(self, client: HAClient) -> list[dict]:
         try:
