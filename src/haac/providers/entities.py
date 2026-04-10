@@ -73,5 +73,65 @@ class EntitiesProvider(Provider):
     async def delete(self, client: HAClient, ha_id: str) -> None:
         raise NotImplementedError("Entities cannot be deleted via haac")
 
+    async def write_desired(self, state_dir: Path, resources: list[dict]) -> None:
+        """Write entities in haac format (entity_id, friendly_name, icon)."""
+        class _IndentedDumper(yaml.Dumper):
+            def increase_indent(self, flow=False, indentless=False):
+                return super().increase_indent(flow, False)
+
+        converted = []
+        for e in resources:
+            # Only include entities with customization
+            name = e.get("friendly_name") or e.get("name") or ""
+            icon = e.get("icon") or ""
+            if not name and not icon:
+                continue
+            entry: dict = {"entity_id": e.get("entity_id", e.get("id", ""))}
+            if name:
+                entry["friendly_name"] = name
+            if icon:
+                entry["icon"] = icon
+            converted.append(entry)
+
+        if not converted:
+            return
+
+        state_dir.mkdir(parents=True, exist_ok=True)
+        path = state_dir / self.state_file
+        data = {"entities": converted}
+        content = yaml.dump(data, Dumper=_IndentedDumper, default_flow_style=False,
+                           sort_keys=False, allow_unicode=True)
+        path.write_text(f"---\n{content}")
+
+    async def pull(self, state_dir: Path, client: HAClient) -> list[str]:
+        """Pull entity customizations from HA."""
+        current = await self.read_current(client)
+        if self.has_state_file(state_dir):
+            desired = await self.read_desired(state_dir)
+        else:
+            desired = []
+
+        desired_ids = {e["entity_id"] for e in desired}
+
+        new_items = []
+        new_names = []
+        for entity in current:
+            eid = entity.get("entity_id", "")
+            name = entity.get("name") or ""
+            icon = entity.get("icon") or ""
+            if eid not in desired_ids and (name or icon):
+                entry: dict = {"entity_id": eid}
+                if name:
+                    entry["friendly_name"] = name
+                if icon:
+                    entry["icon"] = icon
+                new_items.append(entry)
+                new_names.append(eid)
+
+        if new_items:
+            await self.write_desired(state_dir, desired + new_items)
+
+        return new_names
+
 
 register(EntitiesProvider())

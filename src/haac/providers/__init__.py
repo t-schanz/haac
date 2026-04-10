@@ -44,6 +44,37 @@ class Provider(ABC):
                            sort_keys=False, allow_unicode=True)
         path.write_text(f"---\n{content}")
 
+    async def pull(self, state_dir: Path, client: HAClient) -> list[str]:
+        """Pull current HA state into state file.
+
+        Returns list of names/IDs of newly added items.
+        """
+        current = await self.read_current(client)
+        if self.has_state_file(state_dir):
+            desired = await self.read_desired(state_dir)
+        else:
+            desired = []
+
+        # Default: additive merge by name
+        desired_names = set()
+        for d in desired:
+            name = d.get("name", d.get("entity_id", d.get("match", "")))
+            if name:
+                desired_names.add(name.lower())
+
+        new_items = []
+        new_names = []
+        for item in current:
+            name = item.get("name", item.get("name_by_user") or item.get("name", ""))
+            if name and name.lower() not in desired_names:
+                new_items.append(item)
+                new_names.append(name)
+
+        if new_items:
+            await self.write_desired(state_dir, desired + new_items)
+
+        return new_names
+
 
 _PROVIDERS: list[Provider] = []
 

@@ -103,5 +103,9 @@ class DevicesProvider(Provider):
         """No-op — device assignments use glob patterns, not raw entries."""
         pass
 
+    async def pull(self, state_dir: Path, client: HAClient) -> list[str]:
+        """No-op — device assignments use glob patterns, not raw entries."""
+        return []
+
 
 register(DevicesProvider())

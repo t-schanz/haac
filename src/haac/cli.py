@@ -86,41 +86,10 @@ async def _run_pull(config):
 
     async with HAClient(config.ha_url, config.ha_token) as client:
         for provider in get_providers():
-            current_raw = await provider.read_current(client)
-            if provider.has_state_file(config.state_dir):
-                desired = await provider.read_desired(config.state_dir)
-            else:
-                desired = []
-
-            # Build set of existing names for dedup
-            desired_names = set()
-            for d in desired:
-                name = d.get("name", d.get("match", ""))
-                if name:
-                    desired_names.add(name.lower())
-
-            # Find items in HA not in desired (additive only)
-            new_items = []
-            for item in current_raw:
-                name = item.get("name", item.get("name_by_user") or item.get("name", ""))
-                if name and name.lower() not in desired_names:
-                    # Convert HA format to desired format
-                    id_key = f"{provider.name[:-1]}_id" if provider.name.endswith("s") else "id"
-                    new_item = {
-                        "id": item.get(id_key, item.get("id", "")),
-                        "name": name,
-                    }
-                    # Copy extra fields
-                    for k in ("icon", "color", "floor_id"):
-                        if k in item:
-                            new_item[k] = item[k]
-                    new_items.append(new_item)
-                    print_pull_add(provider.name, name)
-                    added += 1
-
-            if new_items:
-                all_items = desired + new_items
-                await provider.write_desired(config.state_dir, all_items)
+            new_names = await provider.pull(config.state_dir, client)
+            for name in new_names:
+                print_pull_add(provider.name, name)
+            added += len(new_names)
 
     if added == 0:
         console.print("[green]No new items to pull — repo is up to date.[/green]")
