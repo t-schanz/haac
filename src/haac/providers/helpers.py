@@ -1,4 +1,4 @@
-"""Helpers provider — input_boolean CRUD via REST API."""
+"""Helpers provider — input_boolean CRUD via WebSocket API."""
 
 from pathlib import Path
 import yaml
@@ -21,11 +21,9 @@ class HelpersProvider(Provider):
         return data.get("input_booleans", [])
 
     async def read_current(self, client: HAClient) -> list[dict]:
-        # REST API returns a dict: {id: {name, icon, ...}, ...}
         try:
-            raw = await client.rest_get("config/input_boolean/config")
-            return [{"id": k, **v} for k, v in raw.items()]
-        except Exception:
+            return await client.ws_command("input_boolean/list")
+        except RuntimeError:
             return []
 
     def diff(self, desired: list[dict], current: list[dict], context: dict | None = None) -> ProviderResult:
@@ -69,12 +67,22 @@ class HelpersProvider(Provider):
         return result
 
     async def apply_change(self, client: HAClient, change: Change) -> None:
-        hid = change.data["id"]
-        body = {k: v for k, v in change.data.items() if k != "id"}
-        await client.rest_post(f"config/input_boolean/config/{hid}", body)
+        if change.action == "create":
+            await client.ws_command(
+                "input_boolean/create",
+                name=change.data.get("name", change.data["id"]),
+                icon=change.data.get("icon", ""),
+            )
+        elif change.action == "update":
+            await client.ws_command(
+                "input_boolean/update",
+                input_boolean_id=change.ha_id,
+                name=change.data.get("name", ""),
+                icon=change.data.get("icon", ""),
+            )
 
     async def delete(self, client: HAClient, ha_id: str) -> None:
-        await client.rest_delete(f"config/input_boolean/config/{ha_id}")
+        await client.ws_command("input_boolean/delete", input_boolean_id=ha_id)
 
 
 register(HelpersProvider())
