@@ -14,6 +14,11 @@ import haac.providers.floors  # noqa: F401
 import haac.providers.labels  # noqa: F401
 import haac.providers.areas  # noqa: F401
 import haac.providers.devices  # noqa: F401
+import haac.providers.entities  # noqa: F401
+import haac.providers.automations  # noqa: F401
+import haac.providers.scenes  # noqa: F401
+import haac.providers.helpers  # noqa: F401
+import haac.providers.dashboard  # noqa: F401
 
 from haac.providers import get_providers, get_provider
 
