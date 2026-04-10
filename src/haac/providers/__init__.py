@@ -6,7 +6,37 @@ from pathlib import Path
 import yaml
 
 from haac.client import HAClient
-from haac.models import Change, ProviderResult
+from haac.models import Change, HaacConfigError, ProviderResult
+
+
+def parse_state_file(path: Path, root_key: str, required_fields: list[str]) -> list[dict]:
+    """Parse a YAML state file with structure and field validation.
+
+    Returns the list of entries under root_key.
+    Raises HaacConfigError with a clear message on any problem.
+    """
+    try:
+        data = yaml.safe_load(path.read_text())
+    except yaml.YAMLError as e:
+        raise HaacConfigError(path.name, f"YAML parse error: {e}")
+
+    if not isinstance(data, dict) or root_key not in data:
+        raise HaacConfigError(path.name, f"expected a '{root_key}' key containing a list")
+
+    entries = data[root_key]
+    if not isinstance(entries, list):
+        raise HaacConfigError(path.name, f"expected '{root_key}' to be a list, got {type(entries).__name__}")
+
+    for i, entry in enumerate(entries, 1):
+        if not isinstance(entry, dict):
+            raise HaacConfigError(path.name, f"entry #{i} must be a mapping, got {type(entry).__name__}")
+        for field in required_fields:
+            if field not in entry:
+                raise HaacConfigError(path.name, f"entry #{i} is missing required field '{field}'")
+            if not entry[field] and entry[field] != 0:
+                raise HaacConfigError(path.name, f"entry #{i} has empty required field '{field}'")
+
+    return entries
 
 
 class Provider(ABC):
