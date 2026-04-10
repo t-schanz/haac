@@ -3,6 +3,19 @@
 from dataclasses import dataclass, field
 
 
+class HaacConfigError(Exception):
+    """Raised when a state file has invalid structure or content."""
+    def __init__(self, file: str, message: str):
+        self.file = file
+        super().__init__(f"{file}: {message}")
+
+
+@dataclass
+class ValidationWarning:
+    file: str
+    message: str
+
+
 @dataclass
 class Change:
     action: str  # "create" | "update"
@@ -34,6 +47,7 @@ class ProviderResult:
 @dataclass
 class PlanResult:
     results: list[ProviderResult] = field(default_factory=list)
+    warnings: list[ValidationWarning] = field(default_factory=list)
 
     @property
     def has_changes(self) -> bool:
