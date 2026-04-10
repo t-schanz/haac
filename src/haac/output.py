@@ -2,12 +2,14 @@
 
 from rich.console import Console
 
-from haac.models import PlanResult, Change, Unmanaged
+from haac.models import PlanResult, Change, Unmanaged, ValidationWarning
 
 console = Console()
 
 
 def print_plan(plan: PlanResult) -> None:
+    print_warnings(plan.warnings)
+
     if not plan.has_changes and plan.total_unmanaged == 0:
         console.print("[green]No changes needed — HA matches desired state.[/green]")
         return
@@ -36,6 +38,14 @@ def print_plan(plan: PlanResult) -> None:
     if plan.total_updates: parts.append(f"{plan.total_updates} to update")
     if plan.total_unmanaged: parts.append(f"{plan.total_unmanaged} unmanaged")
     console.print(f"\n[bold]Summary:[/bold] {', '.join(parts)}")
+
+
+def print_warnings(warnings: list[ValidationWarning]) -> None:
+    if not warnings:
+        return
+    console.print("\n[bold yellow]Warnings:[/bold yellow]")
+    for w in warnings:
+        console.print(f"  [yellow]⚠[/yellow] {w.file}: {w.message}")
 
 
 def print_apply_change(c: Change) -> None:
