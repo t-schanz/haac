@@ -21,11 +21,24 @@ class AutomationsProvider(Provider):
         return data.get("automations", [])
 
     async def read_current(self, client: HAClient) -> list[dict]:
-        # REST API returns list of automation configs
+        # Get automation entity states (which contain the 'id' attribute)
         try:
-            return await client.rest_get("config/automation/config")
+            states = await client.rest_get("states")
         except Exception:
             return []
+        auto_states = [s for s in states if s["entity_id"].startswith("automation.")]
+
+        result = []
+        for state in auto_states:
+            auto_id = state["attributes"].get("id", "")
+            if not auto_id:
+                continue
+            try:
+                config = await client.rest_get(f"config/automation/config/{auto_id}")
+                result.append(config)
+            except Exception:
+                continue
+        return result
 
     def diff(self, desired: list[dict], current: list[dict], context: dict | None = None) -> ProviderResult:
         result = ProviderResult(provider_name=self.name)

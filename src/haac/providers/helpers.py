@@ -28,36 +28,37 @@ class HelpersProvider(Provider):
 
     def diff(self, desired: list[dict], current: list[dict], context: dict | None = None) -> ProviderResult:
         result = ProviderResult(provider_name=self.name)
-        current_by_id = {h["id"]: h for h in current if "id" in h}
-        desired_ids = set()
+        current_by_name = {h["name"].lower(): h for h in current if "name" in h}
+        matched_names = set()
 
         for helper in desired:
-            hid = helper["id"]
-            desired_ids.add(hid)
-            ha_helper = current_by_id.get(hid)
+            ha_helper = current_by_name.get(helper.get("name", "").lower())
 
             if ha_helper is None:
                 result.changes.append(Change(
                     action="create", resource_type="input_boolean",
-                    name=helper.get("name", hid),
+                    name=helper.get("name", helper["id"]),
                     data=helper,
                 ))
             else:
+                matched_names.add(helper.get("name", "").lower())
                 details = []
-                if ha_helper.get("name", "") != helper.get("name", ""):
-                    details.append(f"name: {ha_helper.get('name', '')} → {helper.get('name', '')}")
                 if ha_helper.get("icon", "") != helper.get("icon", ""):
                     details.append(f"icon: {ha_helper.get('icon', '') or '(none)'} → {helper.get('icon', '')}")
 
                 if details:
                     result.changes.append(Change(
                         action="update", resource_type="input_boolean",
-                        name=helper.get("name", hid),
-                        details=details, data=helper, ha_id=hid,
+                        name=helper.get("name", helper["id"]),
+                        details=details, data=helper,
+                        ha_id=ha_helper["id"],  # HA's actual ID
                     ))
 
         for helper in current:
-            if helper.get("id") and helper["id"] not in desired_ids:
+            name = helper.get("name", "").lower()
+            if name and name not in matched_names and not any(
+                d.get("name", "").lower() == name for d in desired
+            ):
                 result.unmanaged.append(Unmanaged(
                     resource_type="input_boolean",
                     ha_id=helper["id"],

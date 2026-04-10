@@ -21,10 +21,24 @@ class ScenesProvider(Provider):
         return data.get("scenes", [])
 
     async def read_current(self, client: HAClient) -> list[dict]:
+        # Get scene entity states (which contain the 'id' attribute)
         try:
-            return await client.rest_get("config/scene/config")
+            states = await client.rest_get("states")
         except Exception:
             return []
+        scene_states = [s for s in states if s["entity_id"].startswith("scene.")]
+
+        result = []
+        for state in scene_states:
+            scene_id = state["attributes"].get("id", "")
+            if not scene_id:
+                continue  # Skip Hue-created scenes (no id)
+            try:
+                config = await client.rest_get(f"config/scene/config/{scene_id}")
+                result.append(config)
+            except Exception:
+                continue
+        return result
 
     def diff(self, desired: list[dict], current: list[dict], context: dict | None = None) -> ProviderResult:
         result = ProviderResult(provider_name=self.name)
