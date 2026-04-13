@@ -313,6 +313,8 @@ def main():
     apply_parser = subparsers.add_parser("apply", help="Apply changes to HA")
     apply_parser.add_argument("--no-rename-refs", action="store_true")
     apply_parser.add_argument("--yes-rename-refs", action="store_true")
+    apply_parser.add_argument("--no-commit", action="store_true")
+    apply_parser.add_argument("--yes-commit", action="store_true")
     subparsers.add_parser("pull", help="Pull HA state into local files (additive)")
 
     delete_parser = subparsers.add_parser("delete", help="Delete resources from HA")
@@ -341,12 +343,23 @@ def main():
             return "no"
         return "prompt"
 
+    def _commit_mode(args) -> str:
+        if getattr(args, "yes_commit", False):
+            return "yes"
+        if getattr(args, "no_commit", False):
+            return "no"
+        return "prompt"
+
     try:
         if args.command == "plan":
             plan = asyncio.run(_run_plan(config, rename_refs_mode=_refs_mode(args)))
             sys.exit(2 if plan.has_changes else 0)
         elif args.command == "apply":
-            asyncio.run(_run_apply(config, rename_refs_mode=_refs_mode(args)))
+            asyncio.run(_run_apply(
+                config,
+                rename_refs_mode=_refs_mode(args),
+                commit_mode=_commit_mode(args),
+            ))
         elif args.command == "pull":
             asyncio.run(_run_pull(config))
         elif args.command == "delete":

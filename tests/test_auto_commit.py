@@ -46,3 +46,30 @@ def test_auto_commit_adds_only_touched_paths(repo):
         capture_output=True, text=True, check=True,
     ).stdout
     assert "unrelated.txt" in status
+
+
+def test_auto_commit_skipped_when_no_touched_paths(repo):
+    from haac.cli import _do_auto_commit
+    from haac.config import Config
+
+    config = Config(ha_url="x", ha_token="t", state_dir=repo / "state", project_dir=repo)
+    _do_auto_commit(config, set(), "msg", mode="yes")
+    log = subprocess.run(
+        ["git", "-C", str(repo), "log", "--format=%s"],
+        capture_output=True, text=True, check=True,
+    ).stdout
+    assert "msg" not in log
+
+
+def test_auto_commit_no_mode_skips(repo):
+    from haac.cli import _do_auto_commit
+    from haac.config import Config
+
+    (repo / "a.yaml").write_text("x")
+    config = Config(ha_url="x", ha_token="t", state_dir=repo, project_dir=repo)
+    _do_auto_commit(config, {Path("a.yaml")}, "msg", mode="no")
+    log = subprocess.run(
+        ["git", "-C", str(repo), "log", "--format=%s"],
+        capture_output=True, text=True, check=True,
+    ).stdout
+    assert "msg" not in log
