@@ -156,3 +156,30 @@ input_booleans:
     current = [{"id": "guest_mode", "name": "Guest Mode"}]
     result = provider.diff(desired, current, {"git_ctx": GitContext(git_repo), "state_dir": state})
     assert any(c.action == "rename" for c in result.changes)
+
+
+def test_entities_rename_detected(git_repo):
+    from haac.providers.entities import EntitiesProvider
+
+    state = git_repo / "state"
+    state.mkdir()
+    _commit_file(git_repo, "state/entities.yaml", """---
+entities:
+  - haac_id: e-abc
+    entity_id: switch.smart_plug_mini
+    friendly_name: Mini Plug
+""")
+    (state / "entities.yaml").write_text("""---
+entities:
+  - haac_id: e-abc
+    entity_id: switch.smart_plug_tv
+    friendly_name: Mini Plug
+""")
+    provider = EntitiesProvider()
+    desired = [{"haac_id": "e-abc", "entity_id": "switch.smart_plug_tv", "friendly_name": "Mini Plug"}]
+    current = [{"entity_id": "switch.smart_plug_mini", "name": "Mini Plug", "icon": ""}]
+    result = provider.diff(desired, current, {"git_ctx": GitContext(git_repo), "state_dir": state})
+    rename = next((c for c in result.changes if c.action == "rename"), None)
+    assert rename is not None
+    assert rename.data.get("new_entity_id") == "switch.smart_plug_tv"
+    assert rename.ha_id == "switch.smart_plug_mini"
