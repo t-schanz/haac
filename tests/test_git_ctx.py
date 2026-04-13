@@ -76,3 +76,10 @@ def test_changed_vs_head(git_repo):
     ctx = GitContext(git_repo)
     assert ctx.differs_from_head(Path("a.yaml")) is True
     assert ctx.differs_from_head(Path("nonexistent.yaml")) is False
+
+
+def test_checkout_reverts_to_head(git_repo):
+    _commit(git_repo, "a.yaml", "original\n")
+    (git_repo / "a.yaml").write_text("modified\n")
+    GitContext(git_repo).checkout([Path("a.yaml")])
+    assert (git_repo / "a.yaml").read_text() == "original\n"
