@@ -38,20 +38,17 @@ async def _build_context(providers, client, config):
     return context
 
 
-async def _run_plan(config):
+async def _plan_once(config) -> PlanResult:
+    """Run one pass of plan without any interactive side effects."""
     plan = PlanResult()
-
     async with HAClient(config.ha_url, config.ha_token) as client:
         providers = get_providers()
         context = await _build_context(providers, client, config)
-
         desired_state = {
             p.name: context[f"desired_{p.name}"]
-            for p in providers
-            if f"desired_{p.name}" in context
+            for p in providers if f"desired_{p.name}" in context
         }
         plan.warnings = validate_references(desired_state)
-
         for provider in providers:
             if not provider.has_state_file(config.state_dir):
                 continue
@@ -59,8 +56,72 @@ async def _run_plan(config):
             current = context.get(provider.name, [])
             result = provider.diff(desired, current, context)
             plan.results.append(result)
+    return plan
 
+
+async def _handle_rename_refs(config, rename_changes, mode: str) -> bool:
+    """Prompt user, scan, preview, rewrite. Returns True if any rewrite happened."""
+    from haac.git_ctx import GitContext
+    from haac.rename_refs import scan_references, rewrite_references
+    from haac.output import print_ref_preview
+
+    git_ctx = GitContext(config.project_dir)
+    if not git_ctx.is_repo():
+        return False
+
+    rewrote_any = False
+    for provider_name, change in rename_changes:
+        old_id = change.ha_id
+        new_id = change.data.get("new_entity_id") or change.data.get("new_id") or change.data.get("name")
+        if not old_id or not new_id:
+            continue
+
+        if mode == "prompt":
+            if not sys.stdin.isatty():
+                continue
+            console.print(f"\n[bold]Detected rename:[/bold] {old_id} → {new_id}")
+            answer = input("Search for references in the repo? [Y/n] ").strip().lower()
+            if answer and answer != "y":
+                continue
+
+        hits = scan_references(git_ctx, old_id)
+        if not hits:
+            console.print(f"  [dim]No references found for {old_id}.[/dim]")
+            continue
+
+        print_ref_preview(old_id, new_id, hits)
+
+        if mode == "prompt":
+            answer = input(f"\nRewrite {len(hits)} references? [y/N] ").strip().lower()
+            if answer != "y":
+                continue
+        elif mode == "no":
+            continue
+        # mode == "yes" falls through
+
+        try:
+            changed = rewrite_references(git_ctx, old_id, new_id)
+            console.print(f"  [green]Rewrote {len(changed)} files.[/green]")
+            rewrote_any = True
+        except Exception as e:
+            console.print(f"  [red]Rewrite failed: {e}[/red]")
+
+    return rewrote_any
+
+
+async def _run_plan(config, rename_refs_mode: str = "prompt") -> PlanResult:
+    """rename_refs_mode: 'prompt' (default), 'yes', 'no'."""
+    plan = await _plan_once(config)
     print_plan(plan)
+
+    rename_changes = [
+        (r.provider_name, c) for r in plan.results for c in r.changes if c.action == "rename"
+    ]
+    if rename_changes and rename_refs_mode != "no":
+        if await _handle_rename_refs(config, rename_changes, rename_refs_mode):
+            console.print("\n[bold]Re-planning with updated references...[/bold]")
+            plan = await _plan_once(config)
+            print_plan(plan)
     return plan
 
 
@@ -141,7 +202,9 @@ def main():
     subparsers = parser.add_subparsers(dest="command", required=True)
 
     subparsers.add_parser("init", help="Initialize a new haac project")
-    subparsers.add_parser("plan", help="Show what would change in HA")
+    plan_parser = subparsers.add_parser("plan", help="Show what would change in HA")
+    plan_parser.add_argument("--no-rename-refs", action="store_true")
+    plan_parser.add_argument("--yes-rename-refs", action="store_true")
     subparsers.add_parser("apply", help="Apply changes to HA")
     subparsers.add_parser("pull", help="Pull HA state into local files (additive)")
 
@@ -164,9 +227,16 @@ def main():
         console.print("[red]Error:[/red] HA_TOKEN not set. Run [cyan]haac init[/cyan] or create .env with HA_TOKEN.")
         sys.exit(1)
 
+    def _refs_mode(args) -> str:
+        if getattr(args, "yes_rename_refs", False):
+            return "yes"
+        if getattr(args, "no_rename_refs", False):
+            return "no"
+        return "prompt"
+
     try:
         if args.command == "plan":
-            plan = asyncio.run(_run_plan(config))
+            plan = asyncio.run(_run_plan(config, rename_refs_mode=_refs_mode(args)))
             sys.exit(2 if plan.has_changes else 0)
         elif args.command == "apply":
             asyncio.run(_run_apply(config))

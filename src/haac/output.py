@@ -67,3 +67,16 @@ def print_pull_add(resource_type: str, name: str) -> None:
 
 def print_delete(resource_type: str, ha_id: str) -> None:
     console.print(f"  [red]-[/red] deleted {resource_type} \"[red]{ha_id}[/red]\"")
+
+
+def print_ref_preview(old: str, new: str, hits: list) -> None:
+    """Print grouped preview of references about to be rewritten."""
+    console.print(f"\n[bold]References to {old}:[/bold]")
+    last_path = None
+    for hit in hits:
+        if hit.path != last_path:
+            console.print(f"\n  [cyan]{hit.path}[/cyan]")
+            last_path = hit.path
+        console.print(f"    {hit.line_number}: {hit.line.rstrip()}")
+    console.print(f"\n  [dim]{len(hits)} references across "
+                  f"{len({h.path for h in hits})} files[/dim]")
