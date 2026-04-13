@@ -25,6 +25,9 @@ def print_plan(plan: PlanResult) -> None:
                 elif c.action == "update":
                     detail = f" [dim]({', '.join(c.details)})[/dim]" if c.details else ""
                     console.print(f"  [yellow]~[/yellow] update \"[yellow]{c.name}[/yellow]\"{detail}")
+                elif c.action == "rename":
+                    detail = f" [dim]({', '.join(c.details)})[/dim]" if c.details else ""
+                    console.print(f"  [magenta]→[/magenta] rename \"[magenta]{c.name}[/magenta]\"{detail}")
 
     all_unmanaged = [u for r in plan.results for u in r.unmanaged]
     if all_unmanaged:
@@ -36,6 +39,7 @@ def print_plan(plan: PlanResult) -> None:
     parts = []
     if plan.total_creates: parts.append(f"{plan.total_creates} to create")
     if plan.total_updates: parts.append(f"{plan.total_updates} to update")
+    if plan.total_renames: parts.append(f"{plan.total_renames} to rename")
     if plan.total_unmanaged: parts.append(f"{plan.total_unmanaged} unmanaged")
     console.print(f"\n[bold]Summary:[/bold] {', '.join(parts)}")
 
@@ -53,6 +57,8 @@ def print_apply_change(c: Change) -> None:
         console.print(f"  [green]+[/green] created {c.resource_type} \"[green]{c.name}[/green]\"")
     elif c.action == "update":
         console.print(f"  [yellow]~[/yellow] updated {c.resource_type} \"[yellow]{c.name}[/yellow]\"")
+    elif c.action == "rename":
+        console.print(f"  [magenta]→[/magenta] renamed {c.resource_type} \"[magenta]{c.name}[/magenta]\"")
 
 
 def print_pull_add(resource_type: str, name: str) -> None:
