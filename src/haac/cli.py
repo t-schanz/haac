@@ -2,6 +2,7 @@
 
 import argparse
 import asyncio
+import subprocess
 import sys
 
 from haac.config import load_config
@@ -198,6 +199,87 @@ async def _run_delete(config, targets):
                 print_delete(kind, ha_id)
             except RuntimeError as e:
                 console.print(f"[red]Error:[/red] {e}")
+
+
+def _do_auto_commit(config, touched_paths: set, suggested_message: str, mode: str) -> None:
+    """Commit only the haac-touched files that actually differ from HEAD.
+
+    mode: 'prompt' | 'yes' | 'no'
+    """
+    from haac.git_ctx import GitContext
+    from pathlib import Path
+
+    if mode == "no" or not touched_paths:
+        return
+    git_ctx = GitContext(config.project_dir)
+    if not git_ctx.is_repo():
+        return
+
+    # Filter to paths that actually differ from HEAD
+    real_changes = sorted([p for p in touched_paths if git_ctx.differs_from_head(p)])
+    if not real_changes:
+        return
+
+    if mode == "prompt":
+        if not sys.stdin.isatty():
+            return
+        console.print("\n[bold]Commit the following files?[/bold]")
+        for p in real_changes:
+            console.print(f"  {p.as_posix()}")
+        console.print(f"\nSuggested message:\n  {suggested_message}")
+        answer = input("\n[E]dit message, [Y]es with suggested, [n]o: ").strip().lower()
+        if answer == "n":
+            return
+        if answer == "e":
+            suggested_message = input("Message: ").strip() or suggested_message
+
+    # Warn about unrelated uncommitted changes (not fatal)
+    unrelated = _unrelated_dirty(git_ctx, touched_paths)
+    if unrelated:
+        console.print(
+            f"[yellow]Note: you have uncommitted changes in "
+            f"{', '.join(p.as_posix() for p in unrelated)} — not included in this commit.[/yellow]"
+        )
+
+    git_ctx.add(real_changes)
+    git_ctx.commit(suggested_message)
+    console.print(f"[green]Committed {len(real_changes)} files.[/green]")
+
+
+def _unrelated_dirty(git_ctx, touched_paths: set) -> list:
+    """Return dirty paths not in touched_paths (porcelain format)."""
+    from pathlib import Path
+
+    result = subprocess.run(
+        ["git", "-C", str(git_ctx.root), "status", "--porcelain"],
+        capture_output=True, text=True, check=True,
+    )
+    dirty = []
+    for line in result.stdout.splitlines():
+        # Porcelain line format: "XY <path>" — first 2 chars are status codes, then space, then path
+        if len(line) < 4:
+            continue
+        p = Path(line[3:].strip())
+        if p not in touched_paths:
+            dirty.append(p)
+    return dirty
+
+
+def _suggested_commit_message(plan) -> str:
+    """Build a human-readable commit message summarising the apply changes."""
+    renames = [c for r in plan.results for c in r.changes if c.action == "rename"]
+    other = [c for r in plan.results for c in r.changes if c.action != "rename"]
+    if not renames and not other:
+        return "haac: apply — no changes"
+    if renames and not other:
+        if len(renames) == 1:
+            return f"haac: apply — rename {renames[0].name}"
+        lines = "\n".join(f"  {c.name}" for c in renames)
+        return f"haac: apply — renames:\n{lines}"
+    if renames:
+        lines = "\n".join(f"  {c.name}" for c in renames)
+        return f"haac: apply — renames:\n{lines}\n+{len(other)} other changes"
+    return f"haac: apply — {len(other)} changes"
 
 
 def main():
