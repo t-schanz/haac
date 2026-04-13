@@ -34,3 +34,33 @@ def test_plan_builds_context_with_git_ctx(ha_repo):
     assert "git_ctx" in ctx
     assert "state_dir" in ctx
     assert ctx["state_dir"] == state
+
+
+import asyncio
+from unittest.mock import AsyncMock
+
+
+@pytest.mark.asyncio
+async def test_apply_invokes_rename_api(tmp_path):
+    """apply calls provider.apply_change for rename actions — specifically entities."""
+    from haac.models import Change
+    from haac.providers.entities import EntitiesProvider
+
+    provider = EntitiesProvider()
+    client = AsyncMock()
+    client.ws_command = AsyncMock()
+
+    change = Change(
+        action="rename",
+        resource_type="entity",
+        name="switch.a → switch.b",
+        data={"new_entity_id": "switch.b"},
+        ha_id="switch.a",
+    )
+    await provider.apply_change(client, change)
+
+    client.ws_command.assert_called_once()
+    args, kwargs = client.ws_command.call_args
+    assert args[0] == "config/entity_registry/update"
+    assert kwargs["entity_id"] == "switch.a"
+    assert kwargs["new_entity_id"] == "switch.b"
