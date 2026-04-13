@@ -4,6 +4,7 @@ import argparse
 import asyncio
 import subprocess
 import sys
+from importlib.metadata import version as _pkg_version
 
 from haac.config import load_config
 from haac.client import HAClient
@@ -304,6 +305,11 @@ def _suggested_commit_message(plan) -> str:
 
 def main():
     parser = argparse.ArgumentParser(prog="haac", description="Home Assistant as Code")
+    parser.add_argument(
+        "--version",
+        action="version",
+        version=f"%(prog)s {_pkg_version('haac')}",
+    )
     subparsers = parser.add_subparsers(dest="command", required=True)
 
     subparsers.add_parser("init", help="Initialize a new haac project")
