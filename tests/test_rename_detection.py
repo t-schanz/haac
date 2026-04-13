@@ -183,3 +183,62 @@ entities:
     assert rename is not None
     assert rename.data.get("new_entity_id") == "switch.smart_plug_tv"
     assert rename.ha_id == "switch.smart_plug_mini"
+
+
+def test_automations_rename_detected(git_repo):
+    from haac.providers.automations import AutomationsProvider
+
+    state = git_repo / "state"
+    state.mkdir()
+    _commit_file(git_repo, "state/automations.yaml", """---
+automations:
+  - haac_id: au-abc
+    id: '1001'
+    alias: Morning
+    trigger: []
+    action: []
+""")
+    (state / "automations.yaml").write_text("""---
+automations:
+  - haac_id: au-abc
+    id: '2002'
+    alias: Morning
+    trigger: []
+    action: []
+""")
+    provider = AutomationsProvider()
+    desired = [{"haac_id": "au-abc", "id": "2002", "alias": "Morning", "trigger": [], "action": []}]
+    current = [{"id": "1001", "alias": "Morning", "trigger": [], "action": []}]
+    result = provider.diff(desired, current, {"git_ctx": GitContext(git_repo), "state_dir": state})
+    rename = next((c for c in result.changes if c.action == "rename"), None)
+    assert rename is not None
+    assert rename.ha_id == "1001"
+    assert rename.data["new_id"] == "2002"
+
+
+def test_scenes_rename_detected(git_repo):
+    from haac.providers.scenes import ScenesProvider
+
+    state = git_repo / "state"
+    state.mkdir()
+    _commit_file(git_repo, "state/scenes.yaml", """---
+scenes:
+  - haac_id: sc-abc
+    id: '5001'
+    name: Evening
+    entities: {}
+""")
+    (state / "scenes.yaml").write_text("""---
+scenes:
+  - haac_id: sc-abc
+    id: '6002'
+    name: Evening
+    entities: {}
+""")
+    provider = ScenesProvider()
+    desired = [{"haac_id": "sc-abc", "id": "6002", "name": "Evening", "entities": {}}]
+    current = [{"id": "5001", "name": "Evening", "entities": {}}]
+    result = provider.diff(desired, current, {"git_ctx": GitContext(git_repo), "state_dir": state})
+    rename = next((c for c in result.changes if c.action == "rename"), None)
+    assert rename is not None
+    assert rename.data["new_id"] == "6002"
