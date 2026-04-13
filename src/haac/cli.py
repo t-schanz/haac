@@ -125,20 +125,24 @@ async def _run_plan(config, rename_refs_mode: str = "prompt") -> PlanResult:
     return plan
 
 
-async def _run_apply(config):
+async def _run_apply(config, rename_refs_mode: str = "prompt"):
+    # Run plan + rewrite + re-plan to stabilize the repo before applying
+    plan = await _plan_once(config)
+    rename_changes = [
+        (r.provider_name, c) for r in plan.results for c in r.changes if c.action == "rename"
+    ]
+    if rename_changes and rename_refs_mode != "no":
+        if await _handle_rename_refs(config, rename_changes, rename_refs_mode):
+            console.print("\n[bold]Re-planning with updated references...[/bold]")
+            plan = await _plan_once(config)
+
+    print_warnings(plan.warnings)
+
+    any_changes = False
     async with HAClient(config.ha_url, config.ha_token) as client:
         providers = get_providers()
         context = await _build_context(providers, client, config)
 
-        desired_state = {
-            p.name: context[f"desired_{p.name}"]
-            for p in providers
-            if f"desired_{p.name}" in context
-        }
-        warnings = validate_references(desired_state)
-        print_warnings(warnings)
-
-        any_changes = False
         for provider in providers:
             if not provider.has_state_file(config.state_dir):
                 continue
@@ -152,7 +156,6 @@ async def _run_apply(config):
                 for change in result.changes:
                     await provider.apply_change(client, change)
                     print_apply_change(change)
-
                 # Refetch after apply for dependent providers
                 context[provider.name] = await provider.read_current(client)
 
@@ -205,7 +208,9 @@ def main():
     plan_parser = subparsers.add_parser("plan", help="Show what would change in HA")
     plan_parser.add_argument("--no-rename-refs", action="store_true")
     plan_parser.add_argument("--yes-rename-refs", action="store_true")
-    subparsers.add_parser("apply", help="Apply changes to HA")
+    apply_parser = subparsers.add_parser("apply", help="Apply changes to HA")
+    apply_parser.add_argument("--no-rename-refs", action="store_true")
+    apply_parser.add_argument("--yes-rename-refs", action="store_true")
     subparsers.add_parser("pull", help="Pull HA state into local files (additive)")
 
     delete_parser = subparsers.add_parser("delete", help="Delete resources from HA")
@@ -239,7 +244,7 @@ def main():
             plan = asyncio.run(_run_plan(config, rename_refs_mode=_refs_mode(args)))
             sys.exit(2 if plan.has_changes else 0)
         elif args.command == "apply":
-            asyncio.run(_run_apply(config))
+            asyncio.run(_run_apply(config, rename_refs_mode=_refs_mode(args)))
         elif args.command == "pull":
             asyncio.run(_run_pull(config))
         elif args.command == "delete":
