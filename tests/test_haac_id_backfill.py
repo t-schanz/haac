@@ -86,6 +86,19 @@ def test_git_head_entry_returns_none_when_no_head(tmp_path):
     assert git_head_entry(ctx, Path("state/entities.yaml"), "entities", "abc") is None
 
 
+def test_parse_state_file_passes_through_haac_id(tmp_path):
+    from haac.providers import parse_state_file
+    p = tmp_path / "floors.yaml"
+    p.write_text("""---
+floors:
+  - haac_id: abc
+    name: Ground
+""")
+    entries = parse_state_file(p, "floors", ["name"])
+    assert entries[0]["haac_id"] == "abc"
+    assert entries[0]["name"] == "Ground"
+
+
 from haac.providers.floors import FloorsProvider
 
 
