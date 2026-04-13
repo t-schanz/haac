@@ -100,6 +100,7 @@ floors:
 
 
 from haac.providers.floors import FloorsProvider
+from haac.providers.entities import EntitiesProvider
 
 
 class FakeClient:
@@ -145,3 +146,16 @@ floors:
     data = yaml.safe_load((tmp_path / "floors.yaml").read_text())
     ground = next(f for f in data["floors"] if f["name"] == "Ground")
     assert ground["haac_id"] == existing_id
+
+
+@pytest.mark.asyncio
+async def test_entities_pull_backfills_haac_id(tmp_path):
+    provider = EntitiesProvider()
+    client = FakeClient([
+        {"entity_id": "light.foo", "name": "Foo Light", "icon": ""},
+    ])
+    await provider.pull(tmp_path, client)
+
+    import yaml
+    data = yaml.safe_load((tmp_path / "entities.yaml").read_text())
+    assert UUID_RE.match(data["entities"][0]["haac_id"])

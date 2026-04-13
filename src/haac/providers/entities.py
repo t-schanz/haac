@@ -73,19 +73,22 @@ class EntitiesProvider(Provider):
         raise NotImplementedError("Entities cannot be deleted via haac")
 
     async def write_desired(self, state_dir: Path, resources: list[dict]) -> None:
-        """Write entities in haac format (entity_id, friendly_name, icon)."""
+        """Write entities in haac format (haac_id, entity_id, friendly_name, icon)."""
         class _IndentedDumper(yaml.Dumper):
             def increase_indent(self, flow=False, indentless=False):
                 return super().increase_indent(flow, False)
 
         converted = []
         for e in resources:
-            # Only include entities with customization
             name = e.get("friendly_name") or e.get("name") or ""
             icon = e.get("icon") or ""
-            if not name and not icon:
+            haac_id = e.get("haac_id")
+            if not name and not icon and not haac_id:
                 continue
-            entry: dict = {"entity_id": e.get("entity_id", e.get("id", ""))}
+            entry: dict = {}
+            if haac_id:
+                entry["haac_id"] = haac_id
+            entry["entity_id"] = e.get("entity_id", e.get("id", ""))
             if name:
                 entry["friendly_name"] = name
             if icon:
@@ -104,6 +107,8 @@ class EntitiesProvider(Provider):
 
     async def pull(self, state_dir: Path, client: HAClient) -> list[str]:
         """Pull entity customizations from HA."""
+        from haac.providers import _ensure_haac_id
+
         current = await self.read_current(client)
         if self.has_state_file(state_dir):
             desired = await self.read_desired(state_dir)
@@ -127,8 +132,11 @@ class EntitiesProvider(Provider):
                 new_items.append(entry)
                 new_names.append(eid)
 
-        if new_items:
-            await self.write_desired(state_dir, desired + new_items)
+        needs_write = bool(new_items) or any("haac_id" not in d for d in desired)
+        merged = desired + new_items
+        _ensure_haac_id(merged)
+        if needs_write:
+            await self.write_desired(state_dir, merged)
 
         return new_names
 
