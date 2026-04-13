@@ -2,11 +2,110 @@
 
 from abc import ABC, abstractmethod
 from pathlib import Path
+import uuid
 
 import yaml
 
 from haac.client import HAClient
+from haac.git_ctx import GitContext
 from haac.models import Change, HaacConfigError, ProviderResult, ValidationWarning
+
+
+def _ensure_haac_id(entries: list[dict]) -> None:
+    """In-place: assign haac_id to any entry missing one, move to first key."""
+    for i, entry in enumerate(entries):
+        if "haac_id" not in entry:
+            entry["haac_id"] = str(uuid.uuid4())
+        # Reorder so haac_id is first key for readability
+        if list(entry.keys())[0] != "haac_id":
+            reordered = {"haac_id": entry["haac_id"]}
+            for k, v in entry.items():
+                if k != "haac_id":
+                    reordered[k] = v
+            entries[i] = reordered
+
+
+def git_head_entry(
+    git_ctx: GitContext,
+    state_file: Path,
+    root_key: str,
+    haac_id: str,
+) -> dict | None:
+    """Look up entry by haac_id in HEAD's version of `state_file`.
+
+    Returns None if the file isn't in HEAD, parses fail, or no match.
+    """
+    blob = git_ctx.head_blob(state_file)
+    if blob is None:
+        return None
+    try:
+        data = yaml.safe_load(blob)
+    except yaml.YAMLError:
+        return None
+    if not isinstance(data, dict):
+        return None
+    entries = data.get(root_key)
+    if not isinstance(entries, list):
+        return None
+    for entry in entries:
+        if isinstance(entry, dict) and entry.get("haac_id") == haac_id:
+            return entry
+    return None
+
+
+def _try_detect_rename(
+    *,
+    desired_entry: dict,
+    current_by_name: dict | None = None,
+    git_ctx: "GitContext | None",
+    state_dir: "Path | None",
+    state_file: str,
+    root_key: str,
+    resource_type: str,
+    ha_id_field: str,
+    name_field: str = "name",
+) -> "Change | None":
+    """Detect a rename: desired has new HA name/ID, HEAD had old one.
+
+    Returns a Change(action='rename') or None if not detected.
+    """
+    from haac.models import Change
+
+    haac_id = desired_entry.get("haac_id")
+    if not haac_id or git_ctx is None or state_dir is None:
+        return None
+
+    abs_path = Path(state_dir) / state_file
+    try:
+        rel_path = abs_path.relative_to(git_ctx.root)
+    except ValueError:
+        rel_path = abs_path
+    old_entry = git_head_entry(
+        git_ctx, rel_path, root_key, haac_id,
+    )
+    if old_entry is None:
+        return None
+
+    old_name = old_entry.get(name_field)
+    if not old_name:
+        return None
+
+    if current_by_name is None:
+        return None
+    old_ha = current_by_name.get(old_name.lower())
+    if old_ha is None:
+        return None
+
+    new_name = desired_entry.get(name_field)
+    details = [f"{name_field}: {old_name} → {new_name}"]
+    return Change(
+        action="rename",
+        resource_type=resource_type,
+        name=f"{old_name} → {new_name}",
+        details=details,
+        data={name_field: new_name},
+        ha_id=old_ha[ha_id_field],
+    )
 
 
 def parse_state_file(path: Path, root_key: str, required_fields: list[str]) -> list[dict]:
@@ -130,8 +229,12 @@ class Provider(ABC):
                 new_items.append(item)
                 new_names.append(name)
 
-        if new_items:
-            await self.write_desired(state_dir, desired + new_items)
+        # Snapshot write-trigger condition BEFORE _ensure_haac_id mutates entries
+        needs_write = bool(new_items) or any("haac_id" not in d for d in desired)
+        merged = desired + new_items
+        _ensure_haac_id(merged)  # Backfill any entry missing a haac_id
+        if needs_write:
+            await self.write_desired(state_dir, merged)
 
         return new_names
 

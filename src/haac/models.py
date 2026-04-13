@@ -18,7 +18,7 @@ class ValidationWarning:
 
 @dataclass
 class Change:
-    action: str  # "create" | "update"
+    action: str  # "create" | "update" | "rename"
     resource_type: str
     name: str
     details: list[str] = field(default_factory=list)
@@ -60,6 +60,10 @@ class PlanResult:
     @property
     def total_updates(self) -> int:
         return sum(1 for r in self.results for c in r.changes if c.action == "update")
+
+    @property
+    def total_renames(self) -> int:
+        return sum(1 for r in self.results for c in r.changes if c.action == "rename")
 
     @property
     def total_unmanaged(self) -> int:
