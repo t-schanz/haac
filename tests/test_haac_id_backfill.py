@@ -33,3 +33,54 @@ def test_ensure_haac_id_moves_field_to_front():
     entries = [{"name": "A", "icon": "x"}]
     _ensure_haac_id(entries)
     assert list(entries[0].keys())[0] == "haac_id"
+
+
+import subprocess
+from pathlib import Path
+
+import pytest
+
+from haac.git_ctx import GitContext
+from haac.providers import git_head_entry
+
+
+@pytest.fixture
+def git_repo(tmp_path: Path) -> Path:
+    subprocess.run(["git", "init", "-q", "-b", "main"], cwd=tmp_path, check=True)
+    subprocess.run(["git", "config", "user.email", "t@t"], cwd=tmp_path, check=True)
+    subprocess.run(["git", "config", "user.name", "t"], cwd=tmp_path, check=True)
+    return tmp_path
+
+
+def _commit_yaml(repo: Path, rel: str, content: str) -> None:
+    (repo / rel).parent.mkdir(parents=True, exist_ok=True)
+    (repo / rel).write_text(content)
+    subprocess.run(["git", "add", rel], cwd=repo, check=True)
+    subprocess.run(["git", "commit", "-q", "-m", "x"], cwd=repo, check=True)
+
+
+def test_git_head_entry_finds_by_haac_id(git_repo):
+    _commit_yaml(git_repo, "state/entities.yaml", """---
+entities:
+  - haac_id: abc
+    entity_id: switch.old
+    friendly_name: Old
+""")
+    ctx = GitContext(git_repo)
+    entry = git_head_entry(ctx, Path("state/entities.yaml"), "entities", "abc")
+    assert entry is not None
+    assert entry["entity_id"] == "switch.old"
+
+
+def test_git_head_entry_returns_none_when_missing(git_repo):
+    _commit_yaml(git_repo, "state/entities.yaml", """---
+entities: []
+""")
+    ctx = GitContext(git_repo)
+    assert git_head_entry(ctx, Path("state/entities.yaml"), "entities", "abc") is None
+
+
+def test_git_head_entry_returns_none_when_no_head(tmp_path):
+    subprocess.run(["git", "init", "-q"], cwd=tmp_path, check=True)
+    ctx = GitContext(tmp_path)
+    assert git_head_entry(ctx, Path("state/entities.yaml"), "entities", "abc") is None

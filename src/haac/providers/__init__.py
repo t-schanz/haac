@@ -7,6 +7,7 @@ import uuid
 import yaml
 
 from haac.client import HAClient
+from haac.git_ctx import GitContext
 from haac.models import Change, HaacConfigError, ProviderResult, ValidationWarning
 
 
@@ -22,6 +23,34 @@ def _ensure_haac_id(entries: list[dict]) -> None:
                 if k != "haac_id":
                     reordered[k] = v
             entries[i] = reordered
+
+
+def git_head_entry(
+    git_ctx: GitContext,
+    state_file: Path,
+    root_key: str,
+    haac_id: str,
+) -> dict | None:
+    """Look up entry by haac_id in HEAD's version of `state_file`.
+
+    Returns None if the file isn't in HEAD, parses fail, or no match.
+    """
+    blob = git_ctx.head_blob(state_file)
+    if blob is None:
+        return None
+    try:
+        data = yaml.safe_load(blob)
+    except yaml.YAMLError:
+        return None
+    if not isinstance(data, dict):
+        return None
+    entries = data.get(root_key)
+    if not isinstance(entries, list):
+        return None
+    for entry in entries:
+        if isinstance(entry, dict) and entry.get("haac_id") == haac_id:
+            return entry
+    return None
 
 
 def parse_state_file(path: Path, root_key: str, required_fields: list[str]) -> list[dict]:
