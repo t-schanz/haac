@@ -78,3 +78,81 @@ floors:
     assert "Ground Floor" in c.name
     assert c.ha_id == "ha-123"
     assert c.data.get("name") == "Ground Floor"
+
+
+def test_labels_rename_detected(git_repo):
+    from haac.providers.labels import LabelsProvider
+
+    state = git_repo / "state"
+    state.mkdir()
+    _commit_file(git_repo, "state/labels.yaml", """---
+labels:
+  - haac_id: l-abc
+    name: Nightly
+    color: blue
+""")
+    (state / "labels.yaml").write_text("""---
+labels:
+  - haac_id: l-abc
+    name: After Dark
+    color: blue
+""")
+    provider = LabelsProvider()
+    desired = [{"haac_id": "l-abc", "name": "After Dark", "color": "blue"}]
+    current = [{"label_id": "l-ha-1", "name": "Nightly", "color": "blue"}]
+    result = provider.diff(desired, current, {"git_ctx": GitContext(git_repo), "state_dir": state})
+    assert any(c.action == "rename" for c in result.changes)
+
+
+def test_areas_rename_detected(git_repo):
+    from haac.providers.areas import AreasProvider
+
+    state = git_repo / "state"
+    state.mkdir()
+    _commit_file(git_repo, "state/areas.yaml", """---
+areas:
+  - haac_id: a-abc
+    id: living_room
+    name: Living Room
+    floor: ground
+""")
+    (state / "areas.yaml").write_text("""---
+areas:
+  - haac_id: a-abc
+    id: living_room
+    name: Lounge
+    floor: ground
+""")
+    provider = AreasProvider()
+    desired = [{"haac_id": "a-abc", "id": "living_room", "name": "Lounge", "floor": "ground"}]
+    current = [{"area_id": "living_room", "name": "Living Room", "floor_id": "ground"}]
+    result = provider.diff(desired, current, {
+        "git_ctx": GitContext(git_repo), "state_dir": state,
+        "floors": [{"floor_id": "ground", "name": "Ground"}],
+        "desired_floors": [{"haac_id": "f-x", "id": "ground", "name": "Ground"}],
+    })
+    assert any(c.action == "rename" for c in result.changes)
+
+
+def test_helpers_rename_detected(git_repo):
+    from haac.providers.helpers import HelpersProvider
+
+    state = git_repo / "state"
+    state.mkdir()
+    _commit_file(git_repo, "state/helpers.yaml", """---
+input_booleans:
+  - haac_id: h-abc
+    id: guest_mode
+    name: Guest Mode
+""")
+    (state / "helpers.yaml").write_text("""---
+input_booleans:
+  - haac_id: h-abc
+    id: guest_mode
+    name: Visitor Mode
+""")
+    provider = HelpersProvider()
+    desired = [{"haac_id": "h-abc", "id": "guest_mode", "name": "Visitor Mode"}]
+    current = [{"id": "guest_mode", "name": "Guest Mode"}]
+    result = provider.diff(desired, current, {"git_ctx": GitContext(git_repo), "state_dir": state})
+    assert any(c.action == "rename" for c in result.changes)
