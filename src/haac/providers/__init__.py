@@ -2,11 +2,26 @@
 
 from abc import ABC, abstractmethod
 from pathlib import Path
+import uuid
 
 import yaml
 
 from haac.client import HAClient
 from haac.models import Change, HaacConfigError, ProviderResult, ValidationWarning
+
+
+def _ensure_haac_id(entries: list[dict]) -> None:
+    """In-place: assign haac_id to any entry missing one, move to first key."""
+    for i, entry in enumerate(entries):
+        if "haac_id" not in entry:
+            entry["haac_id"] = str(uuid.uuid4())
+        # Reorder so haac_id is first key for readability
+        if list(entry.keys())[0] != "haac_id":
+            reordered = {"haac_id": entry["haac_id"]}
+            for k, v in entry.items():
+                if k != "haac_id":
+                    reordered[k] = v
+            entries[i] = reordered
 
 
 def parse_state_file(path: Path, root_key: str, required_fields: list[str]) -> list[dict]:
