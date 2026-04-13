@@ -84,3 +84,51 @@ def test_git_head_entry_returns_none_when_no_head(tmp_path):
     subprocess.run(["git", "init", "-q"], cwd=tmp_path, check=True)
     ctx = GitContext(tmp_path)
     assert git_head_entry(ctx, Path("state/entities.yaml"), "entities", "abc") is None
+
+
+from haac.providers.floors import FloorsProvider
+
+
+class FakeClient:
+    def __init__(self, response):
+        self._response = response
+
+    async def ws_command(self, *args, **kwargs):
+        return self._response
+
+
+@pytest.mark.asyncio
+async def test_base_pull_backfills_haac_id(tmp_path):
+    """Base Provider.pull assigns haac_id to newly pulled entries."""
+    provider = FloorsProvider()
+    client = FakeClient([
+        {"floor_id": "f1", "name": "Ground", "icon": ""},
+    ])
+    await provider.pull(tmp_path, client)
+
+    import yaml
+    data = yaml.safe_load((tmp_path / "floors.yaml").read_text())
+    assert len(data["floors"]) == 1
+    assert UUID_RE.match(data["floors"][0]["haac_id"])
+
+
+@pytest.mark.asyncio
+async def test_base_pull_preserves_existing_haac_id(tmp_path):
+    """Second pull of same entry preserves its haac_id."""
+    existing_id = str(uuid.uuid4())
+    (tmp_path / "floors.yaml").write_text(f"""---
+floors:
+  - haac_id: {existing_id}
+    name: Ground
+    icon: ''
+""")
+    provider = FloorsProvider()
+    client = FakeClient([
+        {"floor_id": "f1", "name": "Ground", "icon": ""},
+    ])
+    await provider.pull(tmp_path, client)
+
+    import yaml
+    data = yaml.safe_load((tmp_path / "floors.yaml").read_text())
+    ground = next(f for f in data["floors"] if f["name"] == "Ground")
+    assert ground["haac_id"] == existing_id

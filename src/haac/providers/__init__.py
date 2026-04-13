@@ -174,8 +174,12 @@ class Provider(ABC):
                 new_items.append(item)
                 new_names.append(name)
 
-        if new_items:
-            await self.write_desired(state_dir, desired + new_items)
+        # Snapshot write-trigger condition BEFORE _ensure_haac_id mutates entries
+        needs_write = bool(new_items) or any("haac_id" not in d for d in desired)
+        merged = desired + new_items
+        _ensure_haac_id(merged)  # Backfill any entry missing a haac_id
+        if needs_write:
+            await self.write_desired(state_dir, merged)
 
         return new_names
 
