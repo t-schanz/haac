@@ -64,3 +64,55 @@ async def test_apply_invokes_rename_api(tmp_path):
     assert args[0] == "config/entity_registry/update"
     assert kwargs["entity_id"] == "switch.a"
     assert kwargs["new_entity_id"] == "switch.b"
+
+
+@pytest.mark.asyncio
+async def test_automation_rename_does_not_delete_if_post_fails():
+    """POST failure must prevent DELETE — safety invariant of two-step rename."""
+    from haac.models import Change
+    from haac.providers.automations import AutomationsProvider
+
+    provider = AutomationsProvider()
+    client = AsyncMock()
+    client.rest_post = AsyncMock(side_effect=RuntimeError("POST failed"))
+    client.rest_delete = AsyncMock()
+
+    change = Change(
+        action="rename",
+        resource_type="automation",
+        name="1001 → 2002",
+        data={"new_id": "2002", "config": {"id": "2002", "alias": "X"}},
+        ha_id="1001",
+    )
+
+    with pytest.raises(RuntimeError):
+        await provider.apply_change(client, change)
+
+    client.rest_post.assert_called_once()
+    client.rest_delete.assert_not_called()
+
+
+@pytest.mark.asyncio
+async def test_scene_rename_does_not_delete_if_post_fails():
+    """POST failure must prevent DELETE for scenes too."""
+    from haac.models import Change
+    from haac.providers.scenes import ScenesProvider
+
+    provider = ScenesProvider()
+    client = AsyncMock()
+    client.rest_post = AsyncMock(side_effect=RuntimeError("POST failed"))
+    client.rest_delete = AsyncMock()
+
+    change = Change(
+        action="rename",
+        resource_type="scene",
+        name="5001 → 6002",
+        data={"new_id": "6002", "config": {"id": "6002", "name": "X"}},
+        ha_id="5001",
+    )
+
+    with pytest.raises(RuntimeError):
+        await provider.apply_change(client, change)
+
+    client.rest_post.assert_called_once()
+    client.rest_delete.assert_not_called()

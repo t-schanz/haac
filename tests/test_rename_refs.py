@@ -68,3 +68,28 @@ def test_rewrite_rolls_back_on_error(repo, monkeypatch):
             )
     finally:
         (repo / "a.yaml").chmod(0o644)
+
+
+def test_rewrite_rolls_back_on_mid_write_failure(repo, monkeypatch):
+    """If a later file's write fails, earlier files are restored to original content."""
+    _write(repo, "a.yaml", "switch.smart_plug_mini: on\n")
+    _write(repo, "b.yaml", "switch.smart_plug_mini: off\n")
+
+    # Make `b.yaml` writable per pre-check, but fail on actual write
+    original_write_text = Path.write_text
+
+    def failing_write(self, content, *args, **kwargs):
+        if self.name == "b.yaml":
+            raise OSError("simulated disk full")
+        return original_write_text(self, content, *args, **kwargs)
+
+    monkeypatch.setattr(Path, "write_text", failing_write)
+
+    with pytest.raises(OSError):
+        rewrite_references(GitContext(repo), "switch.smart_plug_mini", "switch.smart_plug_tv")
+
+    # Undo monkeypatch before reading
+    monkeypatch.setattr(Path, "write_text", original_write_text)
+
+    # a.yaml should have been rolled back to original content
+    assert (repo / "a.yaml").read_text() == "switch.smart_plug_mini: on\n"

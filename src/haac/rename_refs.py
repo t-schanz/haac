@@ -57,11 +57,13 @@ def rewrite_references(git_ctx: GitContext, old: str, new: str) -> list[Path]:
     """Replace whole-token occurrences of `old` with `new` across the repo.
 
     Pre-checks that all candidate files are writable before modifying any.
-    On any write failure, restores via git checkout. Returns list of paths changed.
+    On any write failure, restores all previously-written files using in-memory
+    snapshots of their original content. Returns list of paths changed.
     """
     pattern = _token_regex(old)
     hits = scan_references(git_ctx, old)
-    files_to_write: list[tuple[Path, Path, str]] = []
+    # Each entry: (full_path, rel_path, original_content, new_content)
+    files_to_write: list[tuple[Path, Path, str, str]] = []
 
     seen_paths: set[Path] = set()
     for hit in hits:
@@ -75,22 +77,27 @@ def rewrite_references(git_ctx: GitContext, old: str, new: str) -> list[Path]:
             continue
         updated = pattern.sub(new, content)
         if updated != content:
-            files_to_write.append((full, hit.path, updated))
+            files_to_write.append((full, hit.path, content, updated))
 
-    # Pre-check writability
-    for full, _rel, _content in files_to_write:
+    # Pre-check writability of every candidate
+    for full, _rel, _orig, _new in files_to_write:
         if not full.is_file() or not os.access(full, os.W_OK):
             raise PermissionError(f"not writable: {full}")
 
-    # Write all
     written_rel: list[Path] = []
+    written_full: list[tuple[Path, str]] = []  # for rollback: (path, original_content)
     try:
-        for full, rel, content in files_to_write:
-            full.write_text(content)
+        for full, rel, original, updated in files_to_write:
+            full.write_text(updated)
             written_rel.append(rel)
+            written_full.append((full, original))
     except Exception:
-        if written_rel:
-            git_ctx.checkout(written_rel)
+        # Restore in-memory snapshots — works for both tracked and untracked files
+        for full, original in written_full:
+            try:
+                full.write_text(original)
+            except OSError:
+                pass
         raise
 
     return written_rel
