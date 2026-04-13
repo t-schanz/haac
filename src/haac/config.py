@@ -35,3 +35,7 @@ def load_config(project_dir: Path | None = None) -> HaacConfig:
         entities_dir=entities_dir,
         project_dir=project_dir,
     )
+
+
+# Convenience alias
+Config = HaacConfig

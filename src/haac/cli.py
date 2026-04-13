@@ -25,7 +25,12 @@ from haac.providers import get_providers, get_provider, validate_references
 
 async def _build_context(providers, client, config):
     """Build context dict with desired + current state for all providers."""
-    context = {}
+    from haac.git_ctx import GitContext
+
+    context = {
+        "git_ctx": GitContext(config.project_dir),
+        "state_dir": config.state_dir,
+    }
     for p in providers:
         if p.has_state_file(config.state_dir):
             context[f"desired_{p.name}"] = await p.read_desired(config.state_dir)
