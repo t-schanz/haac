@@ -60,17 +60,18 @@ async def _plan_once(config) -> PlanResult:
     return plan
 
 
-async def _handle_rename_refs(config, rename_changes, mode: str) -> bool:
-    """Prompt user, scan, preview, rewrite. Returns True if any rewrite happened."""
+async def _handle_rename_refs_tracked(config, rename_changes, mode: str) -> set:
+    """Prompt user, scan, preview, rewrite. Returns set of Path objects that were rewritten."""
+    from pathlib import Path
     from haac.git_ctx import GitContext
     from haac.rename_refs import scan_references, rewrite_references
     from haac.output import print_ref_preview
 
+    touched: set = set()
     git_ctx = GitContext(config.project_dir)
     if not git_ctx.is_repo():
-        return False
+        return touched
 
-    rewrote_any = False
     for provider_name, change in rename_changes:
         old_id = change.ha_id
         new_id = change.data.get("new_entity_id") or change.data.get("new_id") or change.data.get("name")
@@ -102,12 +103,19 @@ async def _handle_rename_refs(config, rename_changes, mode: str) -> bool:
 
         try:
             changed = rewrite_references(git_ctx, old_id, new_id)
+            for p in changed:
+                touched.add(p)
             console.print(f"  [green]Rewrote {len(changed)} files.[/green]")
-            rewrote_any = True
         except Exception as e:
             console.print(f"  [red]Rewrite failed: {e}[/red]")
 
-    return rewrote_any
+    return touched
+
+
+async def _handle_rename_refs(config, rename_changes, mode: str) -> bool:
+    """Legacy bool-returning wrapper. Plan only cares if any rewrite happened."""
+    paths = await _handle_rename_refs_tracked(config, rename_changes, mode)
+    return bool(paths)
 
 
 async def _run_plan(config, rename_refs_mode: str = "prompt") -> PlanResult:
@@ -126,14 +134,18 @@ async def _run_plan(config, rename_refs_mode: str = "prompt") -> PlanResult:
     return plan
 
 
-async def _run_apply(config, rename_refs_mode: str = "prompt"):
+async def _run_apply(config, rename_refs_mode: str = "prompt", commit_mode: str = "prompt"):
+    touched_paths: set = set()
+
     # Run plan + rewrite + re-plan to stabilize the repo before applying
     plan = await _plan_once(config)
     rename_changes = [
         (r.provider_name, c) for r in plan.results for c in r.changes if c.action == "rename"
     ]
     if rename_changes and rename_refs_mode != "no":
-        if await _handle_rename_refs(config, rename_changes, rename_refs_mode):
+        paths = await _handle_rename_refs_tracked(config, rename_changes, rename_refs_mode)
+        touched_paths.update(paths)
+        if paths:
             console.print("\n[bold]Re-planning with updated references...[/bold]")
             plan = await _plan_once(config)
 
@@ -160,10 +172,18 @@ async def _run_apply(config, rename_refs_mode: str = "prompt"):
                 # Refetch after apply for dependent providers
                 context[provider.name] = await provider.read_current(client)
 
-        if not any_changes:
-            console.print("[green]No changes needed — HA matches desired state.[/green]")
-        else:
+        if any_changes:
+            # State files may have been backfilled by pull; add them to touched set
+            for p in providers:
+                if p.has_state_file(config.state_dir):
+                    rel = (config.state_dir / p.state_file).relative_to(config.project_dir)
+                    touched_paths.add(rel)
             console.print("\n[bold green]Done.[/bold green]")
+        elif not touched_paths:
+            console.print("[green]No changes needed — HA matches desired state.[/green]")
+
+    if touched_paths and commit_mode != "no":
+        _do_auto_commit(config, touched_paths, _suggested_commit_message(plan), commit_mode)
 
 
 async def _run_pull(config):

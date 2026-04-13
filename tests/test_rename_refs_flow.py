@@ -15,7 +15,7 @@ def repo(tmp_path):
 
 @pytest.mark.asyncio
 async def test_handle_rename_refs_yes_mode_rewrites(repo):
-    from haac.cli import _handle_rename_refs
+    from haac.cli import _handle_rename_refs, _handle_rename_refs_tracked
     from haac.config import HaacConfig
     from haac.models import Change
 
@@ -31,8 +31,16 @@ async def test_handle_rename_refs_yes_mode_rewrites(repo):
         name="switch.old → switch.new",
         data={"new_entity_id": "switch.new"}, ha_id="switch.old",
     ))]
+
+    # Bool-returning shim still works
     result = await _handle_rename_refs(config, changes, "yes")
     assert result is True
+
+    # Rewrite already happened above; write the old text back and verify tracked version
+    (repo / "scenes.yaml").write_text("switch.old: x\n")
+    tracked = await _handle_rename_refs_tracked(config, changes, "yes")
+    assert tracked  # non-empty set is truthy
+
     assert "switch.new" in (repo / "scenes.yaml").read_text()
 
 
