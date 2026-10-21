@@ -86,3 +86,24 @@ async def test_read_desired_wraps_in_list(tmp_path):
     result = await p.read_desired(tmp_path)
     assert len(result) == 1
     assert result[0]["views"][0]["title"] == "Home"
+
+
+@pytest.mark.asyncio
+async def test_pull_writes_flat_config_that_reads_back(tmp_path):
+    p = DashboardProvider()
+    config = _make_config([{"title": "Wohnzimmer", "cards": [{"type": "light"}]}])
+    client = AsyncMock()
+    client.ws_command.return_value = config
+    assert await p.pull(tmp_path, client) == ["Lovelace"]
+    assert await p.read_desired(tmp_path) == [config]
+
+
+@pytest.mark.asyncio
+async def test_pull_leaves_existing_file_untouched(tmp_path):
+    p = DashboardProvider()
+    path = tmp_path / "dashboard.yaml"
+    path.write_text("---\n# hand-written\nviews: []\n")
+    client = AsyncMock()
+    client.ws_command.return_value = _make_config([{"title": "Other", "cards": []}])
+    assert await p.pull(tmp_path, client) == []
+    assert path.read_text() == "---\n# hand-written\nviews: []\n"

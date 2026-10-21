@@ -107,13 +107,13 @@ async def test_read_desired_parses_yaml(tmp_path):
 
 @pytest.mark.asyncio
 async def test_write_desired_roundtrip(tmp_path):
-    """Note: helpers uses 'input_booleans' as root key, not 'helpers'."""
+    """helpers uses 'input_booleans' as root key (not 'helpers') so write/read round-trips."""
     p = HelpersProvider()
     original = [{"id": "washer", "name": "Washer Running", "icon": "mdi:washing-machine"}]
     await p.write_desired(tmp_path, original)
-    # The base write_desired uses self.name="helpers" as key
     content = (tmp_path / "helpers.yaml").read_text()
     data = yaml.safe_load(content)
-    # Base class writes with key "helpers" but read_desired reads "input_booleans"
-    # This is a known asymmetry — read_desired uses "input_booleans"
-    assert "helpers" in data
+    assert "input_booleans" in data
+    # And read_desired round-trips cleanly
+    result = await p.read_desired(tmp_path)
+    assert result[0]["name"] == "Washer Running"

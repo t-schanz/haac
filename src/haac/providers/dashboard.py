@@ -54,6 +54,20 @@ class DashboardProvider(Provider):
 
         return result
 
+    async def pull(self, state_dir: Path, client: HAClient) -> list[str]:
+        # The dashboard is one document, not a list of entries: never merge into an
+        # existing file, and write it flat (title/views) so read_desired can parse it.
+        path = state_dir / self.state_file
+        if path.exists():
+            return []
+        current = await self.read_current(client)
+        if not current:
+            return []
+        state_dir.mkdir(parents=True, exist_ok=True)
+        content = yaml.dump(current[0], default_flow_style=False, sort_keys=False, allow_unicode=True)
+        path.write_text(f"---\n{content}")
+        return ["Lovelace"]
+
     async def apply_change(self, client: HAClient, change: Change) -> None:
         await client.ws_command("lovelace/config/save", config=change.data)
 

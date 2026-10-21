@@ -2,6 +2,8 @@
 
 from pathlib import Path
 
+import yaml
+
 from haac.client import HAClient
 from haac.models import Change, ProviderResult, Unmanaged
 from haac.providers import Provider, parse_state_file, register, _try_detect_rename
@@ -10,13 +12,26 @@ from haac.providers import Provider, parse_state_file, register, _try_detect_ren
 class HelpersProvider(Provider):
     name = "helpers"
     state_file = "helpers.yaml"
+    root_key = "input_booleans"
     depends_on = []
 
     async def read_desired(self, state_dir: Path) -> list[dict]:
         path = state_dir / self.state_file
         if not path.exists():
             return []
-        return parse_state_file(path, "input_booleans", ["name"])
+        return parse_state_file(path, self.root_key, ["name"])
+
+    async def write_desired(self, state_dir: Path, resources: list[dict]) -> None:
+        class _IndentedDumper(yaml.Dumper):
+            def increase_indent(self, flow=False, indentless=False):
+                return super().increase_indent(flow, False)
+
+        state_dir.mkdir(parents=True, exist_ok=True)
+        path = state_dir / self.state_file
+        data = {self.root_key: resources}
+        content = yaml.dump(data, Dumper=_IndentedDumper, default_flow_style=False,
+                           sort_keys=False, allow_unicode=True)
+        path.write_text(f"---\n{content}")
 
     async def read_current(self, client: HAClient) -> list[dict]:
         try:
