@@ -20,6 +20,7 @@ import haac.providers.entities  # noqa: F401
 import haac.providers.automations  # noqa: F401
 import haac.providers.scenes  # noqa: F401
 import haac.providers.helpers  # noqa: F401
+import haac.providers.config_helpers  # noqa: F401
 import haac.providers.dashboard  # noqa: F401
 
 from haac.providers import get_providers, get_provider, validate_references

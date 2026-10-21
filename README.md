@@ -79,6 +79,7 @@ git commit         # save it
 | `state/automations.yaml` | Automations (triggers, conditions, actions) |
 | `state/scenes.yaml` | Scenes (light states, switch states) |
 | `state/helpers.yaml` | Input helpers (input_boolean, etc.) |
+| `state/config_helpers.yaml` | Config-entry helpers (template, history_stats, utility_meter) |
 | `state/dashboard.yaml` | Lovelace dashboard |
 
 Each file is optional. Only manage what you want — adopt incrementally.
@@ -118,6 +119,7 @@ my-ha/
     automations.yaml
     scenes.yaml
     helpers.yaml
+    config_helpers.yaml
     dashboard.yaml
   entities/          # read-only inventory (haac fetch)
     lights.yaml
