@@ -107,3 +107,44 @@ async def test_pull_leaves_existing_file_untouched(tmp_path):
     client.ws_command.return_value = _make_config([{"title": "Other", "cards": []}])
     assert await p.pull(tmp_path, client) == []
     assert path.read_text() == "---\n# hand-written\nviews: []\n"
+
+
+@pytest.mark.asyncio
+async def test_url_path_dashboard_created_with_sidebar_entry(tmp_path):
+    p = DashboardProvider()
+    (tmp_path / "dashboard.yaml").write_text("title: Haus\nurl_path: home-dashboard\nicon: mdi:x\nviews: []\n")
+    desired = await p.read_desired(tmp_path)
+    client = AsyncMock()
+    client.ws_command.return_value = []  # no dashboards yet
+    current = await p.read_current(client)
+    change = p.diff(desired, current).changes[0]
+    assert (change.action, change.ha_id) == ("create", None)
+
+    client = AsyncMock()
+    await p.apply_change(client, change)
+    calls = [(c.args[0], c.kwargs) for c in client.ws_command.call_args_list]
+    assert calls[0] == ("lovelace/dashboards/create", {"url_path": "home-dashboard", "mode": "storage", "title": "Haus",
+                                                        "icon": "mdi:x", "show_in_sidebar": True, "require_admin": False})
+    assert calls[1] == ("lovelace/config/save", {"config": {"title": "Haus", "views": []}, "url_path": "home-dashboard"})
+
+
+@pytest.mark.asyncio
+async def test_url_path_dashboard_in_sync_has_no_changes(tmp_path):
+    p = DashboardProvider()
+    (tmp_path / "dashboard.yaml").write_text("title: Haus\nurl_path: home-dashboard\nicon: mdi:x\nviews: []\n")
+    desired = await p.read_desired(tmp_path)
+    entry = {"id": "home_dashboard", "url_path": "home-dashboard", "title": "Haus", "icon": "mdi:x"}
+    client = AsyncMock()
+    client.ws_command.side_effect = [[entry], {"title": "Haus", "views": []}]
+    current = await p.read_current(client)
+    assert p.diff(desired, current).changes == []
+    entry["title"] = "Alt"
+    assert p.diff(desired, current).changes[0].ha_id == "home_dashboard"
+
+
+@pytest.mark.asyncio
+async def test_url_path_without_hyphen_rejected(tmp_path):
+    from haac.models import HaacConfigError
+    (tmp_path / "dashboard.yaml").write_text("url_path: dashboard\nviews: []\n")
+    with pytest.raises(HaacConfigError, match="hyphen"):
+        await DashboardProvider().read_desired(tmp_path)
